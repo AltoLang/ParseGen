@@ -1,8 +1,10 @@
+from cmath import exp
+from lib2to3.pgen2 import token
 import os
 from enum import Enum
 
 class Qualifier:
-    def __init__(self, parts: str, combine: bool) -> None:
+    def __init__(self, parts: list[str], combine: bool) -> None:
         self.parts = parts
         self.combine = combine
 
@@ -11,6 +13,12 @@ class Token:
     def __init__(self, name: str, qualifier: Qualifier) -> None:
         self.name = name
         self.qualifier = qualifier
+
+
+class Expression:
+    def __init__(self, name: str, ordered_tokens: list[Token]) -> None:
+        self.name = name
+        self.ordered_tokens = ordered_tokens
 
 
 class RegionType(Enum):
@@ -23,6 +31,11 @@ class TokenRegion:
         self.tokens = tokens
 
 
+class ExpressionRegion:
+    def __init__(self, expressions: list[Expression]) -> None:
+        self.expressions = expressions
+
+
 class GrammarFile:
     def __init__(self, path: str) -> None:
         file = open(path, 'r')
@@ -31,6 +44,7 @@ class GrammarFile:
     def parse(self) -> None:
         current_region = None
         self.token_region = TokenRegion([])
+        self.expression_region = ExpressionRegion([])
 
         for line in self.lines:
             index = self.lines.index(line) + 1
@@ -47,14 +61,13 @@ class GrammarFile:
                 current_region = RegionType.Expressions
                 continue
 
-            if current_region == RegionType.Tokens:
-                # TokenName := @combine('1', '2')
-
-                if ':=' not in sterilized:
+            if ':=' not in sterilized:
                     report_error(ErrorType.MalformedExpression, index)
                     return
+
+            if current_region == RegionType.Tokens:
+                # TokenName := @combine('1', '2')
                 
-                print(index)
                 token_name = sterilized[0:sterilized.find(':=')]
                 for t in self.token_region.tokens:
                     if t.name == token_name:
@@ -62,26 +75,39 @@ class GrammarFile:
                         return
                 
                 assignee = sterilized[(sterilized.find(':=') + 2):len(sterilized)]
-                qualifier = self.get_qualifier(assignee, line)
+                qualifier = self.get_token_qualifier(assignee, index)
                 if qualifier == None:
                     return
                 
                 token = Token(token_name, qualifier)                
                 self.token_region.tokens.append(token)
+            
             elif current_region == RegionType.Expressions:
-                continue
+                # ExpressionName := <FirstToken> <SecondToken>
+
+                expression_name = sterilized[0:sterilized.find(':=')]
+                for e in self.expression_region.expressions:
+                    if e.name == expression_name:
+                        report_error(ErrorType.TokenAlreadyDefined, index)
+                        return
+
+                assignee = sterilized[(sterilized.find(':=') + 2):len(sterilized)]
+                tokens = self.parse_expression_assignee(assignee, index)
+
+                expression = Expression(expression_name, tokens)
+                self.expression_region.expressions.append(expression)   
+                         
             elif (current_region == None):
                 report_error(ErrorType.NotParsingRegion, index)
                 return
 
-    def get_qualifier(self, assignee: str, full_line: str) -> Qualifier:
+    def get_token_qualifier(self, assignee: str, index: int) -> Qualifier:
         parts = []
         combine = False
         if assignee[0] == "'" or assignee[0] == '"':
-            parts = self.parse_assignee_list(assignee, full_line, 1)
+            parts = self.parse_assignee_list(assignee, index, 1)
         elif assignee[0] == '@':
             if ('(' not in assignee) or (')' not in assignee):
-                index = self.lines.index(full_line) + 1
                 report_error(ErrorType.WrongAssignee, index)
                 return None
 
@@ -90,7 +116,7 @@ class GrammarFile:
                                 .replace('(', '') \
                                 .replace(')', '')
             
-            arguments = self.parse_assignee_list(arguments_text, full_line, None)
+            arguments = self.parse_assignee_list(arguments_text, index, None)
             match function_name:
                 case 'includes':
                     parts = arguments
@@ -101,17 +127,51 @@ class GrammarFile:
                     combine = True
                     pass
                 case _:
-                    index = self.lines.index(full_line) + 1
                     report_error(ErrorType.UnknownFunction, index)
+                    return
         else:
-            index = self.lines.index(full_line) + 1
             report_error(ErrorType.WrongAssignee, index)
             return None
 
         q = Qualifier(parts, combine)
         return Qualifier
 
-    def parse_assignee_list(self, text: str, full_line: str, max_length: int) -> list:
+    def parse_expression_assignee(self, assignee: str, index: int) -> list[Token]:
+        opened = False
+        token_name = ""
+        tokens = []
+
+        for c in assignee:
+            if c == '<':
+                opened = True
+                continue
+            elif c == '>':
+                matches = []
+                for t in self.token_region.tokens:
+                    if t.name == token_name:
+                        matches.append(t)
+
+                if len(matches) == 0:
+                    report_error(ErrorType.UndefinedToken, index)
+                    return None
+                
+                token = matches[0]
+                tokens.append(token)
+
+                opened = False
+                token_name = ""
+                continue
+
+            if opened:
+                token_name += c
+
+        if opened:
+            report_error(ErrorType.UnterminatedTokenReference, index)
+            return None
+
+        return tokens
+
+    def parse_assignee_list(self, text: str, index: int, max_length: int) -> list:
         text = text.replace('"', "'")
         literals = []
         parts = text.split(',')
@@ -120,7 +180,6 @@ class GrammarFile:
             if part[0] == "'":
                 # literal
                 if not part.count("'") == 2:
-                    index = self.lines.index(full_line) + 1
                     report_error(ErrorType.WrongAssignee, index)
                     return None
 
@@ -129,7 +188,6 @@ class GrammarFile:
             elif part[0] == '<':
                 # existing token
                 if (not '<' in part) or (not '>' in part) or (part.count('<') > 1) or (part.count('>') > 1):
-                    index = self.lines.index(full_line) + 1
                     report_error(ErrorType.WrongAssignee, index)
                     return None
 
@@ -142,19 +200,16 @@ class GrammarFile:
                         matching_tokens.append(t)
 
                 if len(matching_tokens) == 0:
-                    index = self.lines.index(full_line) + 1
                     report_error(ErrorType.UndefinedToken, index)
                     return None
                 
                 token = matching_tokens[0]
                 literals.append(token)
             else:
-                index = self.lines.index(full_line) + 1
                 report_error(ErrorType.WrongAssignee, index)
                 return None
             
         if (not max_length == None) and len(parts) > max_length:
-            index = self.lines.index(full_line) + 1
             report_error(ErrorType.WrongAssignee, index)
             return None
 
@@ -169,6 +224,7 @@ class ErrorType(Enum):
     TokenAlreadyDefined = 5
     UnknownFunction = 6
     UndefinedToken = 7
+    UnterminatedTokenReference = 8
 
 def report_error(type: ErrorType, line: int) -> None:
     match type:
@@ -186,5 +242,7 @@ def report_error(type: ErrorType, line: int) -> None:
             print("Unknown Function!")
         case ErrorType.UndefinedToken:
             print("Undefined Token")
+        case ErrorType.UnterminatedTokenReference:
+            print("Unterminated Token Reference")
 
     print("    - On line {}".format(line))
