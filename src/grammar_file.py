@@ -1,18 +1,17 @@
 import os
-import string
 from enum import Enum
 from operator import index
 
 from numpy import full
 
 class Qualifier:
-    def __init__(self, parts: string, combine: bool) -> None:
+    def __init__(self, parts: str, combine: bool) -> None:
         self.parts = parts
         self.combine = combine
 
 
 class Token:
-    def __init__(self, name: string, qualifier: Qualifier) -> None:
+    def __init__(self, name: str, qualifier: Qualifier) -> None:
         self.name = name
         self.qualifier = qualifier
 
@@ -28,7 +27,7 @@ class TokenRegion:
 
 
 class GrammarFile:
-    def __init__(self, path: string) -> None:
+    def __init__(self, path: str) -> None:
         file = open(path, 'r')
         self.lines = file.readlines()
 
@@ -73,13 +72,11 @@ class GrammarFile:
                 report_error(ErrorType.NotParsingRegion, index)
                 return
 
-    def get_qualifier(self, assignee: string, full_line: string) -> Qualifier:
+    def get_qualifier(self, assignee: str, full_line: str) -> Qualifier:
         parts = []
         combine = False
         if assignee[0] == "'" or assignee[0] == '"':
-            part = assignee.replace("'", '')
-            part = part.replace('"', '')
-            parts.append(part)
+            parts = self.parse_literal_list(assignee, full_line, 1)
         elif assignee[0] == '@':
             if ('(' not in assignee) or (')' not in assignee):
                 index = self.lines.index(full_line) + 1
@@ -87,10 +84,20 @@ class GrammarFile:
                 return None
 
             function_name = assignee[1:assignee.find('(')]
+            arguments_text = assignee[assignee.find('('):assignee.find(')')] \
+                                .replace('(', '') \
+                                .replace(')', '')
+            
+            arguments = self.parse_literal_list(arguments_text, full_line, None)
+            print(arguments)
             match function_name:
                 case 'includes':
+                    parts = arguments
+                    combine = False
                     pass
                 case 'combine':
+                    parts = arguments
+                    combine = True
                     pass
                 case _:
                     index = self.lines.index(full_line) + 1
@@ -103,6 +110,26 @@ class GrammarFile:
         q = Qualifier(parts, combine)
         return Qualifier
 
+    def parse_literal_list(self, text: str, full_line: str, max_length: int) -> list[str]:
+        text = text.replace('"', "'")
+        literals = []
+        parts = text.split(',')
+
+        for part in parts:
+            if not part.count("'") == 2:
+                index = self.lines.index(full_line) + 1
+                report_error(ErrorType.WrongAssignee, index)
+                return None
+
+            literal = part.replace("'", '')
+            literals.append(literal)
+
+        if (not max_length == None) and len(parts) > max_length:
+            index = self.lines.index(full_line) + 1
+            report_error(ErrorType.WrongAssignee, index)
+            return None
+
+        return literals
 
 class ErrorType(Enum):
     NotParsingRegion = 1
