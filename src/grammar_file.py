@@ -1,4 +1,4 @@
-from msilib.schema import Error
+from operator import index
 import os
 from enum import Enum
 
@@ -30,34 +30,47 @@ class GrammarFile:
         self.lines = file.readlines()
 
     def parse(self):
-        index = 0
         current_region = None
-
         tokens = []
-        while True:
-            line = self.lines[index]
+
+        for line in self.lines:
             sterilized = line.replace(' ', '')
+            sterilized = sterilized.replace('\n', '')
+            print(sterilized)
+
+            if sterilized == '':
+                continue
 
             if sterilized == '.tokens:':
                 current_region = RegionType.Tokens
+                continue
             elif sterilized == '.expressions:':
                 current_region = RegionType.Expressions
+                continue
 
             if current_region == RegionType.Tokens:
                 # TokenName := @combine('1', '2')
-                pass
+                
+                if ':=' not in sterilized:
+                    index = self.lines.index(line) + 1
+                    report_error(ErrorType.MalformedExpression, index)
+                    return
+                
+                token_name = sterilized[0:sterilized.find(':=')]
+                print(token_name)
             elif current_region == RegionType.Expressions:
-                pass
+                continue
             elif (current_region == None):
-                report_error(ErrorType.NotParsingRegion, index + 1);
+                index = self.lines.index(line) + 1
+                report_error(ErrorType.NotParsingRegion, index);
                 return
 
-            index += 1
 
 
 class ErrorType(Enum):
     NotParsingRegion = 1
     NoAssignmentOperator = 2
+    MalformedExpression = 3
 
 def report_error(type, line):
     match type:
@@ -65,5 +78,7 @@ def report_error(type, line):
             print("Not Parsing a Region!")
         case ErrorType.NoAssignmentOperator:
             print("Assignment operator missing!")
+        case ErrorType.MalformedExpression:
+            print("Malformed Expression!")
 
-    print("    - At line {line}")
+    print("    - On line {}".format(line))
