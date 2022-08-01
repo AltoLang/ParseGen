@@ -54,16 +54,17 @@ class GrammarFile:
                     report_error(ErrorType.MalformedExpression, index)
                     return
                 
+                print(index)
                 token_name = sterilized[0:sterilized.find(':=')]
-                assignee = sterilized[(sterilized.find(':=') + 2):len(sterilized)]
-                qualifier = self.get_qualifier(assignee, line)
-                if qualifier == None:
-                    return
-
                 for t in self.token_region.tokens:
                     if t.name == token_name:
                         report_error(ErrorType.TokenAlreadyDefined, index)
                         return
+                
+                assignee = sterilized[(sterilized.find(':=') + 2):len(sterilized)]
+                qualifier = self.get_qualifier(assignee, line)
+                if qualifier == None:
+                    return
                 
                 token = Token(token_name, qualifier)                
                 self.token_region.tokens.append(token)
@@ -133,14 +134,14 @@ class GrammarFile:
                     return None
 
                 token_name = part.replace('<', '') \
-                           .replace('>', '')
+                                 .replace('>', '')
 
                 matching_tokens = []
                 for t in self.token_region.tokens:
                     if t.name == token_name:
                         matching_tokens.append(t)
 
-                if len(matching_tokens == 0):
+                if len(matching_tokens) == 0:
                     index = self.lines.index(full_line) + 1
                     report_error(ErrorType.UndefinedToken, index)
                     return None
@@ -158,6 +159,7 @@ class GrammarFile:
             return None
 
         return literals
+
 
 class ErrorType(Enum):
     NotParsingRegion = 1
