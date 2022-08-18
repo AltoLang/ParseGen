@@ -1,8 +1,14 @@
 .tokens:
     NumberToken := @combine('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
+    OperatorToken := @includes(<PlusToken>, <MinusToken>)
     PlusToken := '+'
     MinusToken := '-'
-    OperatorToken := @includes(<PlusToken>, <MinusToken>)
 
 .expressions:
+    Expression := @includes(BinaryExpression)
     BinaryExpression := <NumberToken> <OperatorToken> <MinusToken>
+
+.statements:
+    Statement := @includes(IfStatement, ExpressionStatement)
+    IfStatement := <IfKeyword> <OpenParenthesis> <Expression> <ClosedParenthesis> <Statement>
+    ExpressionStatement := Expression
