@@ -151,7 +151,7 @@ class GrammarFile:
                 literal = part.replace("'", '')
                 literals.append(literal)
             elif part[0] == '<':
-                # existing token
+                # existing token    
                 if (not '<' in part) or (not '>' in part) or (part.count('<') > 1) or (part.count('>') > 1):
                     report_error(ErrorType.WrongAssignee, index)
                     return None
